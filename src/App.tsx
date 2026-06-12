@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Answer = {
   text: string;
@@ -17,6 +17,11 @@ type Team = {
   id: number;
   name: string;
   score: number;
+};
+
+type StoredTeamName = {
+  id: number;
+  name: string;
 };
 
 type GameState = {
@@ -137,9 +142,11 @@ const initialState: GameState = {
   bankOpen: false,
 };
 
+const teamNameStorageKey = "family-feud-team-names";
+
 function App() {
   const [session, setSession] = useState<{ game: GameState; history: GameState[] }>({
-    game: initialState,
+    game: getInitialState(),
     history: [],
   });
   const [teamEditorOpen, setTeamEditorOpen] = useState(false);
@@ -153,6 +160,13 @@ function App() {
     0,
   );
   const activeTeam = game.teams.find((team) => team.id === game.activeTeamId)!;
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      teamNameStorageKey,
+      JSON.stringify(game.teams.map(({ id, name }) => ({ id, name }))),
+    );
+  }, [game.teams]);
 
   function updateGame(mutator: (draft: GameState) => GameState) {
     setSession((current) => {
@@ -626,6 +640,26 @@ function TeamNameModal({
 
 function teamDisplayName(team: Team) {
   return team.name.trim() || `Team ${team.id}`;
+}
+
+function getInitialState(): GameState {
+  if (typeof window === "undefined") return initialState;
+
+  try {
+    const stored = window.localStorage.getItem(teamNameStorageKey);
+    if (!stored) return initialState;
+
+    const teamNames = JSON.parse(stored) as StoredTeamName[];
+    return {
+      ...initialState,
+      teams: initialState.teams.map((team) => {
+        const savedTeam = teamNames.find((saved) => saved.id === team.id);
+        return savedTeam ? { ...team, name: savedTeam.name.slice(0, 28) } : team;
+      }),
+    };
+  } catch {
+    return initialState;
+  }
 }
 
 export default App;
