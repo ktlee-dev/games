@@ -1,17 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-type Answer = {
-  text: string;
-  points: number;
-};
-
-type Question = {
-  id: string;
-  round: number;
-  set: string;
-  prompt: string;
-  answers: Answer[];
-};
+import { type Question, questions } from "./questions";
 
 type Team = {
   id: number;
@@ -36,117 +24,42 @@ type GameState = {
   bankOpen: boolean;
 };
 
-const questions: Question[] = [
-  {
-    id: "office-party-guests",
-    round: 3,
-    set: "Office Party Set",
-    prompt: "Name something people hide before guests arrive",
-    answers: [
-      { text: "Dishes", points: 32 },
-      { text: "Laundry", points: 24 },
-      { text: "Clutter", points: 18 },
-      { text: "Mail", points: 11 },
-      { text: "Pet toys", points: 8 },
-      { text: "Snacks", points: 7 },
-    ],
-  },
-  {
-    id: "meeting-phrases",
-    round: 4,
-    set: "Office Party Set",
-    prompt: "Name a phrase people say when a meeting runs long",
-    answers: [
-      { text: "One more thing", points: 29 },
-      { text: "Circle back", points: 24 },
-      { text: "Quick question", points: 18 },
-      { text: "Almost done", points: 14 },
-      { text: "Take offline", points: 9 },
-      { text: "Hard stop", points: 6 },
-    ],
-  },
-  {
-    id: "party-food",
-    round: 5,
-    set: "Office Party Set",
-    prompt: "Name something people bring to a potluck",
-    answers: [
-      { text: "Chips", points: 31 },
-      { text: "Dessert", points: 25 },
-      { text: "Dip", points: 17 },
-      { text: "Salad", points: 12 },
-      { text: "Drinks", points: 9 },
-      { text: "Napkins", points: 6 },
-    ],
-  },
-  {
-    id: "airport-bag",
-    round: 6,
-    set: "Travel Set",
-    prompt: "Name something people forget to pack",
-    answers: [
-      { text: "Toothbrush", points: 34 },
-      { text: "Charger", points: 27 },
-      { text: "Socks", points: 15 },
-      { text: "Passport", points: 11 },
-      { text: "Medication", points: 8 },
-      { text: "Sunscreen", points: 5 },
-    ],
-  },
-  {
-    id: "road-trip",
-    round: 7,
-    set: "Travel Set",
-    prompt: "Name something people do on a long car ride",
-    answers: [
-      { text: "Sleep", points: 30 },
-      { text: "Snack", points: 23 },
-      { text: "Play music", points: 19 },
-      { text: "Look outside", points: 12 },
-      { text: "Use phone", points: 10 },
-      { text: "Ask ETA", points: 6 },
-    ],
-  },
-  {
-    id: "weekend",
-    round: 8,
-    set: "Everyday Set",
-    prompt: "Name something people look forward to on Friday",
-    answers: [
-      { text: "Sleeping in", points: 28 },
-      { text: "Dinner out", points: 22 },
-      { text: "No work", points: 20 },
-      { text: "Seeing friends", points: 14 },
-      { text: "Movies", points: 9 },
-      { text: "Sports", points: 7 },
-    ],
-  },
-];
-
 const initialState: GameState = {
   teams: [
-    { id: 1, name: "Team 1", score: 184 },
-    { id: 2, name: "Team 2", score: 92 },
-    { id: 3, name: "Team 3", score: 151 },
-    { id: 4, name: "Team 4", score: 68 },
-    { id: 5, name: "Team 5", score: 117 },
-    { id: 6, name: "Team 6", score: 130 },
+    { id: 1, name: "Team 1", score: 0 },
+    { id: 2, name: "Team 2", score: 0 },
+    { id: 3, name: "Team 3", score: 0 },
+    { id: 4, name: "Team 4", score: 0 },
+    { id: 5, name: "Team 5", score: 0 },
+    { id: 6, name: "Team 6", score: 0 },
   ],
   activeTeamId: 1,
   questionIndex: 0,
   stagedQuestionIndex: 0,
-  revealed: [0, 1],
-  strikes: 2,
-  stealMode: true,
+  revealed: [],
+  strikes: 0,
+  stealMode: false,
   blackout: false,
   bankOpen: false,
 };
 
 const teamNameStorageKey = "family-feud-team-names";
+const gameStateStorageKey = "family-feud-game-state";
+const gameStateUpdatedEvent = "family-feud-game-state-updated";
 
 function App() {
+  const route = typeof window === "undefined" ? "host" : window.location.pathname;
+
+  if (route === "/display") {
+    return <DisplayPage />;
+  }
+
+  return <HostPage />;
+}
+
+function HostPage() {
   const [session, setSession] = useState<{ game: GameState; history: GameState[] }>({
-    game: getInitialState(),
+    game: getStoredGameState(),
     history: [],
   });
   const [teamEditorOpen, setTeamEditorOpen] = useState(false);
@@ -162,11 +75,12 @@ function App() {
   const activeTeam = game.teams.find((team) => team.id === game.activeTeamId)!;
 
   useEffect(() => {
+    writeGameState(game);
     window.localStorage.setItem(
       teamNameStorageKey,
       JSON.stringify(game.teams.map(({ id, name }) => ({ id, name }))),
     );
-  }, [game.teams]);
+  }, [game]);
 
   function updateGame(mutator: (draft: GameState) => GameState) {
     setSession((current) => {
@@ -235,6 +149,13 @@ function App() {
     resetRound((game.questionIndex + 1) % questions.length);
   }
 
+  function newGame() {
+    setSession((current) => ({
+      game: getInitialState(),
+      history: [current.game, ...current.history].slice(0, 20),
+    }));
+  }
+
   function toggleBank() {
     updateGame((draft) => ({ ...draft, bankOpen: !draft.bankOpen }));
   }
@@ -277,7 +198,9 @@ function App() {
           blackout={game.blackout}
           teams={game.teams}
           onBlackout={() => updateGame((draft) => ({ ...draft, blackout: !draft.blackout }))}
+          onNewGame={newGame}
           onNewRound={nextRound}
+          onOpenDisplay={() => window.open("/display", "family-feud-display")}
           onOpenTeamEditor={() => setTeamEditorOpen(true)}
           onSelectTeam={setActiveTeam}
         />
@@ -331,12 +254,59 @@ function App() {
   );
 }
 
+function DisplayPage() {
+  const [game, setGame] = useState(getStoredGameState);
+  const currentQuestion = questions[game.questionIndex];
+  const revealedSet = useMemo(() => new Set(game.revealed), [game.revealed]);
+  const boardTotal = currentQuestion.answers.reduce(
+    (total, answer, index) => total + (revealedSet.has(index) ? answer.points : 0),
+    0,
+  );
+  const activeTeam = game.teams.find((team) => team.id === game.activeTeamId)!;
+
+  useEffect(() => {
+    const syncFromStorage = (event?: Event) => {
+      if (event instanceof StorageEvent && event.key !== gameStateStorageKey) return;
+      setGame(getStoredGameState());
+    };
+
+    window.addEventListener("storage", syncFromStorage);
+    window.addEventListener("focus", syncFromStorage);
+    window.addEventListener(gameStateUpdatedEvent, syncFromStorage);
+
+    return () => {
+      window.removeEventListener("storage", syncFromStorage);
+      window.removeEventListener("focus", syncFromStorage);
+      window.removeEventListener(gameStateUpdatedEvent, syncFromStorage);
+    };
+  }, []);
+
+  return (
+    <main className="audience-shell">
+      <Display
+        activeTeam={activeTeam}
+        audience
+        blackout={game.blackout}
+        boardTotal={boardTotal}
+        question={currentQuestion}
+        revealedSet={revealedSet}
+        roundNumber={currentQuestion.round}
+        stealMode={game.stealMode}
+        strikes={game.strikes}
+      />
+      <AudienceStandings activeTeamId={game.activeTeamId} teams={game.teams} />
+    </main>
+  );
+}
+
 function ScoreRail({
   activeTeamId,
   blackout,
   teams,
   onBlackout,
+  onNewGame,
   onNewRound,
+  onOpenDisplay,
   onOpenTeamEditor,
   onSelectTeam,
 }: {
@@ -344,7 +314,9 @@ function ScoreRail({
   blackout: boolean;
   teams: Team[];
   onBlackout: () => void;
+  onNewGame: () => void;
   onNewRound: () => void;
+  onOpenDisplay: () => void;
   onOpenTeamEditor: () => void;
   onSelectTeam: (teamId: number) => void;
 }) {
@@ -368,10 +340,16 @@ function ScoreRail({
       </div>
       <div className="rail-foot">
         <button className="small-btn" onClick={onNewRound}>
-          New Round
+          Next Round
+        </button>
+        <button className="small-btn" onClick={onNewGame}>
+          New Game
         </button>
         <button className="small-btn" onClick={onBlackout}>
           {blackout ? "Restore" : "Blackout"}
+        </button>
+        <button className="small-btn" onClick={onOpenDisplay}>
+          Display
         </button>
         <button className="small-btn" onClick={onOpenTeamEditor}>
           Team Names
@@ -383,6 +361,7 @@ function ScoreRail({
 
 function Display({
   activeTeam,
+  audience = false,
   blackout,
   boardTotal,
   question,
@@ -392,6 +371,7 @@ function Display({
   strikes,
 }: {
   activeTeam: Team;
+  audience?: boolean;
   blackout: boolean;
   boardTotal: number;
   question: Question;
@@ -403,7 +383,9 @@ function Display({
   const strikeMarks = "X".repeat(strikes);
 
   return (
-    <section className={`display ${blackout ? "blackout" : ""}`}>
+    <section
+      className={`display ${audience ? "audience-display" : ""} ${blackout ? "blackout" : ""}`}
+    >
       {blackout ? (
         <div className="blackout-screen">
           <span>Family Feud</span>
@@ -417,7 +399,7 @@ function Display({
           <div className="board-zone">
             <div className="question">
               <h2>{question.prompt}</h2>
-              <p>Board total updates as answers reveal</p>
+              {!audience && <p>Board total updates as answers reveal</p>}
             </div>
             <div className="board">
               {question.answers.map((answer, index) => {
@@ -439,6 +421,19 @@ function Display({
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+function AudienceStandings({ activeTeamId, teams }: { activeTeamId: number; teams: Team[] }) {
+  return (
+    <section className="audience-standings" aria-label="Live standings">
+      {teams.map((team) => (
+        <div className={`audience-team ${team.id === activeTeamId ? "active" : ""}`} key={team.id}>
+          <span>{teamDisplayName(team)}</span>
+          <strong>{team.score}</strong>
+        </div>
+      ))}
     </section>
   );
 }
@@ -660,6 +655,92 @@ function getInitialState(): GameState {
   } catch {
     return initialState;
   }
+}
+
+function getStoredGameState(): GameState {
+  if (typeof window === "undefined") return initialState;
+
+  try {
+    const stored = window.localStorage.getItem(gameStateStorageKey);
+    if (!stored) return getInitialState();
+    return normalizeGameState(JSON.parse(stored));
+  } catch {
+    return getInitialState();
+  }
+}
+
+function writeGameState(game: GameState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(gameStateStorageKey, JSON.stringify(game));
+  window.dispatchEvent(new Event(gameStateUpdatedEvent));
+}
+
+function normalizeGameState(value: unknown): GameState {
+  if (!isRecord(value)) return getInitialState();
+
+  const questionIndex = clampIndex(value.questionIndex, questions.length);
+  const stagedQuestionIndex = clampIndex(value.stagedQuestionIndex, questions.length);
+  const revealedLimit = questions[questionIndex]?.answers.length ?? 0;
+  const activeTeamId = clampTeamId(value.activeTeamId);
+
+  return {
+    ...initialState,
+    teams: normalizeTeams(value.teams),
+    activeTeamId,
+    questionIndex,
+    stagedQuestionIndex,
+    revealed: normalizeRevealed(value.revealed, revealedLimit),
+    strikes: clampNumber(value.strikes, 0, 3),
+    stealMode: value.stealMode === true,
+    blackout: value.blackout === true,
+    bankOpen: value.bankOpen === true,
+  };
+}
+
+function normalizeTeams(value: unknown): Team[] {
+  const storedTeams = Array.isArray(value) ? value : [];
+
+  return initialState.teams.map((team) => {
+    const storedTeam = storedTeams.find(
+      (candidate): candidate is Partial<Team> =>
+        isRecord(candidate) && candidate.id === team.id,
+    );
+    const name = typeof storedTeam?.name === "string" ? storedTeam.name.slice(0, 28) : team.name;
+    const score =
+      typeof storedTeam?.score === "number" ? Math.max(0, Math.round(storedTeam.score)) : team.score;
+
+    return { ...team, name, score };
+  });
+}
+
+function normalizeRevealed(value: unknown, answerCount: number) {
+  const revealed = Array.isArray(value) ? value : [];
+  return [...new Set(revealed)]
+    .filter(
+      (index): index is number => Number.isInteger(index) && index >= 0 && index < answerCount,
+    )
+    .sort((a, b) => a - b);
+}
+
+function clampIndex(value: unknown, length: number) {
+  if (!Number.isInteger(value) || length <= 0) return 0;
+  return Math.min(Math.max(value as number, 0), length - 1);
+}
+
+function clampTeamId(value: unknown) {
+  if (!Number.isInteger(value)) return initialState.activeTeamId;
+  return initialState.teams.some((team) => team.id === value)
+    ? (value as number)
+    : initialState.activeTeamId;
+}
+
+function clampNumber(value: unknown, min: number, max: number) {
+  if (typeof value !== "number" || Number.isNaN(value)) return min;
+  return Math.min(Math.max(Math.round(value), min), max);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export default App;
